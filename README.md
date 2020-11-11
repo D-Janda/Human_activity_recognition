@@ -4,11 +4,11 @@
  The data were obtained from: 
  http://archive.ics.uci.edu/ml/datasets/Activity+Recognition+from+Single+Chest-Mounted+Accelerometer#
  
- You can find here: 
-README
-R sript
-Rmd. script
-Pdf. document 
+ You can find here:  
+- README
+- R sript
+- Rmd. script
+- Pdf. document 
 
 
 
