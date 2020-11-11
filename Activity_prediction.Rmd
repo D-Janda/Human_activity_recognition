@@ -1,0 +1,578 @@
+---
+title: "Activty recognition from single chest mounted accelerometer"
+author: "David Janda"
+date: "11 11 2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Abstaract  
+## Introduction  
+
+Main goal of this data science project is to build at least two machine learning algorithms for Activity recognition from single chest mounted accelerometer data. Target accuracy of best performing algorithm is 95 % or more. 
+The data set is acquired through UCI machine learning repository. The data consist of 1 file per user with 15 users total. Each file contains data for triaxial accelerometer, sequential number and user id.
+
+## Methods 
+
+The data from each user are combined together to make one dataset. The set is then cleaned and separated into data and validation (unseen) set. 
+Data exploration is done through written or visualized form. For visualization are used various packages.  
+There are three algorithms build - decision tree, random forest and k-nearest neighbors. After is the algorithm build it's then fit into the validation set.
+
+## Results  
+
+The best results were acquired by Random forest algorithm with accuracy of 98 %. For this approach was used Ranger package with auto tuning parameters.
+
+## Conclusion  
+
+Our task was to build machine learning algorithm for human activity recognition. It was done by three different approaches. And best accuracy was acquired by random forest algorithm. The results could be improved by setting different algorithms together like kNN + Rf. Or by using neural network or deep learning techniques.  
+Limitations of this work could be limited knowledge of accelerometers used for data measurement, therefore the algorithm wouldn't have to work on different data set.
+
+\newpage
+
+# Introduction  
+
+Human activity recognition also called HAR is getting a lot of attention since it's inception. And this field is still evolving. The knowledge of user's activity can help to personalize services, improve health care and study human behavior such as in sociology or physical activity science. 
+Since nowadays there were many sensor based devices used to monitor human activity. Such as heart rate monitors, GPS or accelerometers. From the heart rate monitors and GPS signals we can only roughly determine what kind of activity is person doing and we have to contextualize it with environment in which is the activity done. Or use other devices that can help us to understand the persons movement. One of these devices are accelerometers, which is an electromechanical device used to measure acceleration forces. The force may be static, like gravitational or dynamic, like human movement. 
+The accelerometers that are used for monitoring humans movement are usually small devices, that can be attached for example to wrist, waist or chest. However there are also accelerometers in smart phones and their signal can also be used for activity recognition. The device can measure the activity in different axis, nowadays is the standard to measure in triaxial dimension - x, y, z. The signal is then stored in device and can be downloaded a transformed into csv. file format. 
+However for human activity recognition we need some base data that are labeled with specific activity so we can use them to train algorithms. Therefore for our purpose we will use data from UC Irvine Machine Learning Repository.
+
+## Dataset 
+
+We will use data provided for **Activity recognition from single chest mounted accelerometer**, the data are obtained from this website: http://archive.ics.uci.edu/ml/datasets/Activity+Recognition+from+Single+Chest-Mounted+Accelerometer#
+Downloaded folder consist data from 15 participants, one .csv file per person, with label of activity type. Activities performed are:
+1. Working at Computer  
+2. Standing Up, Walking and Going updown stairs  
+3. Standing  
+4. Walking  
+5. Going UpDown Stairs  
+6. Walking and Talking with Someone  
+7. Talking while Standing  
+
+The labels are codified as numbers. The data of three axes are recorded on sampling frequency of 52 Hz and are uncalibrated. 
+The data set also contains sequential number.
+
+## Goals of this project  
+
+This project is last step in HarvardX PH125.9x Data Science professional certificate and part of Capstone course. 
+Aim of this project is to **build at least two machine learning algorithms** that will predict human activity based on input from triaxial accelerometer. The results will be tested on generated validation set.  
+Performance of the algorithm will be evaluated by accuracy. Personal goal is to have accuracy better than 95 %.
+
+## Steps toward the goal
+
+* Introduction 
+* Data downloading and cleaning
+* Description of dataset
+* Exploration analysis
+* Building algorithm for activity prediction
+* Activity prediction
+* Summarize and give recommendations for future work
+
+\newpage
+
+# Methods  
+
+## Preparation of work space  
+
+First we load necessary packages that are going to be used, if they are not installed we will install them:
+```{r install, echo = TRUE, message = FALSE, warning = FALSE, eval = TRUE, tidy = TRUE}
+#install packages if they are not installed
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
+if(!require(data.table)) install.packages("data.table", repos = "http://cran.us.r-project.org")
+if(!require(knitr)) install.packages("knitr", repos = "http://cran.us.r-project.org")
+if(!require(ggridges)) install.packages("ggridges", repos = "http://cran.us.r-project.org")
+if(!require(ggplot2)) install.packages("ggplot2", repos = "http://cran.us.r-project.org")
+if(!require(e1071)) install.packages('e1071', dependencies=TRUE, repos = "http://cran.us.r-project.org")
+if(!require(stats)) install.packages("stats", repos = "http://cran.us.r-project.org")
+if(!require(gridExtra)) install.packages("gridExtra", repos = "http://cran.us.r-project.org")
+if(!require(ranger)) install.packages("ranger", repos = "http://cran.us.r-project.org")
+if(!require(tuneRanger)) install.packages("tuneRanger", repos = "http://cran.us.r-project.org")
+if(!require(forecast)) install.packages('forecast', dependencies=TRUE, repos = "http://cran.us.r-project.org")
+if(!require(doParallel)) install.packages('doParallel', repos = "http://cran.us.r-project.org")
+
+# Load them if not loaded
+if(!require(tidyverse)) library("tidyvers")
+if(!require(caret)) library("caret")
+if(!require(data.table)) library("data.table")
+if(!require(knitr)) library("knitr")
+if(!require(ggridges)) library("ggridges")
+if(!require(ggplot2)) library("ggplot2")
+if(!require(e1071)) library("e1071")
+if(!require(stats)) library("stats")
+if(!require(gridExtra)) library("gridExtra")
+if(!require(ranger)) library("stats")
+if(!require(tuneRanger)) library("stats")
+if(!require(forecast)) library("forecast")
+if(!require(doParallel)) library("forecast")
+```
+
+Then we can download our data from https://archive.ics.uci.edu/ml/datasets/Activity+Recognition+from+Single+Chest-Mounted+Accelerometer#. 
+We download the zipped file into temporary object.
+
+```{r download, eval=TRUE, echo=FALSE, error=FALSE, warning=FALSE, tidy=TRUE}
+# Download dataset from UCI dataset
+# https://archive.ics.uci.edu/ml/datasets/Activity+Recognition+from+Single+Chest-Mounted+Accelerometer
+# Data are downloaded as zip. archive.
+
+temp <- tempfile()
+download.file("https://archive.ics.uci.edu/ml/machine-learning-databases/00287/Activity%20Recognition%20from%20Single%20Chest-Mounted%20Accelerometer.zip", temp)
+
+# Read files, I didn't figure out how to read them in one code because of the hard exaction of multi directory zip
+
+AR1 <- fread(text = gsub("::", "\t", readLines(unzip(temp, "Activity Recognition from Single Chest-Mounted Accelerometer/1.csv"))),
+                 col.names = c("seq", "x", "y", "z", "activity"))
+AR2 <- fread(text = gsub("::", "\t", readLines(unzip(temp, "Activity Recognition from Single Chest-Mounted Accelerometer/2.csv"))),
+           col.names = c("seq", "x", "y", "z", "activity"))
+AR3 <- fread(text = gsub("::", "\t", readLines(unzip(temp, "Activity Recognition from Single Chest-Mounted Accelerometer/3.csv"))),
+           col.names = c("seq", "x", "y", "z", "activity"))
+AR4 <- fread(text = gsub("::", "\t", readLines(unzip(temp, "Activity Recognition from Single Chest-Mounted Accelerometer/4.csv"))),
+           col.names = c("seq", "x", "y", "z", "activity"))
+AR5 <- fread(text = gsub("::", "\t", readLines(unzip(temp, "Activity Recognition from Single Chest-Mounted Accelerometer/5.csv"))),
+           col.names = c("seq", "x", "y", "z", "activity"))
+AR6 <- fread(text = gsub("::", "\t", readLines(unzip(temp, "Activity Recognition from Single Chest-Mounted Accelerometer/6.csv"))),
+             col.names = c("seq", "x", "y", "z", "activity"))
+AR7 <- fread(text = gsub("::", "\t", readLines(unzip(temp, "Activity Recognition from Single Chest-Mounted Accelerometer/7.csv"))),
+           col.names = c("seq", "x", "y", "z", "activity"))
+AR8 <- fread(text = gsub("::", "\t", readLines(unzip(temp, "Activity Recognition from Single Chest-Mounted Accelerometer/8.csv"))),
+           col.names = c("seq", "x", "y", "z", "activity"))
+AR9 <- fread(text = gsub("::", "\t", readLines(unzip(temp, "Activity Recognition from Single Chest-Mounted Accelerometer/9.csv"))),
+           col.names = c("seq", "x", "y", "z", "activity"))
+AR10 <- fread(text = gsub("::", "\t", readLines(unzip(temp, "Activity Recognition from Single Chest-Mounted Accelerometer/10.csv"))),
+           col.names = c("seq", "x", "y", "z", "activity"))
+AR11 <- fread(text = gsub("::", "\t", readLines(unzip(temp, "Activity Recognition from Single Chest-Mounted Accelerometer/11.csv"))),
+           col.names = c("seq", "x", "y", "z", "activity"))
+AR12 <- fread(text = gsub("::", "\t", readLines(unzip(temp, "Activity Recognition from Single Chest-Mounted Accelerometer/12.csv"))),
+           col.names = c("seq", "x", "y", "z", "activity"))
+AR13 <- fread(text = gsub("::", "\t", readLines(unzip(temp, "Activity Recognition from Single Chest-Mounted Accelerometer/13.csv"))),
+           col.names = c("seq", "x", "y", "z", "activity"))
+AR14 <- fread(text = gsub("::", "\t", readLines(unzip(temp, "Activity Recognition from Single Chest-Mounted Accelerometer/14.csv"))),
+           col.names = c("seq", "x", "y", "z", "activity"))
+AR15 <- fread(text = gsub("::", "\t", readLines(unzip(temp, "Activity Recognition from Single Chest-Mounted Accelerometer/15.csv"))),
+           col.names = c("seq", "x", "y", "z", "activity"))
+```
+
+As the data were downloaded in separated files per user we will merge them into one dataset.Also it has been said that the data are uncalibrated so we will clear them from noise with median filter and normalize theme so the values are on the same scale. We will also change the sequential number so the activities can be displayed next to each other. 
+Then we create new value named vector magnitude which represents length of vector for our three axis.  
+
+In the dataset was found activity category 0 which is not described, so we delete it. Also we give meaningful labels to activities. 
+```{r prepare, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE}
+
+# Crating one data frame
+AR <- bind_rows(list(AR1, AR2, AR3, AR4, AR5, AR6, AR7, AR8, AR9, AR10, AR11, AR12, AR13, AR14, AR15), .id = "id" )
+
+# Adjustment of data  
+## Giving meaningful label to activities  
+## Also delete activity = 0, because there wasn't specification about this type  
+  
+AR$activity <- factor(AR$activity,
+                      levels = c(1,2,3,4,5,6,7),
+                      labels = c("working", "stand_walk_down", 
+                                 "standing", "walking", 
+                                 "going_up_down", "walk+talk", "stand+talk"))
+
+
+# Creating normalization function
+
+normalize <- function(x){
+  return(x - min(x)) / (max(x) - min(x))
+}
+
+
+## Creating vector magnitude, applying median filter to remove outlines, normalizing data 
+## Creating sequential number for each activity
+
+AR <- AR %>% 
+  mutate(id = as.numeric(id), 
+         vm = sqrt(x^2 + y^2 + z^2),  
+          x = runmed(x, k = 5),
+          y = runmed(y, k = 5),
+          z = runmed(z, k = 5)) %>%
+         group_by(activity) %>%
+         mutate(seq = as.numeric(1:n()),
+                x = normalize(x), 
+                y = normalize(y), 
+                z = normalize(z),
+                vm = normalize(vm)) %>%
+  subset(activity != 0)
+
+
+```
+
+As last step of our preparation we split the data into part that we will use for visualization and algorithm building and part for validation of our algorithm.  
+The splitting is done 70/30 to have major part of the data for manipulation.
+
+```{r split, eval=TRUE, echo=FALSE, message=FALSE, warning=FALSE, tidy=TRUE}
+
+# Divide AR into data (train set) and Validation (Test set for last step controlling)
+set.seed(1, sample.kind="Rounding") # using R 3.6 or later
+test_index <- createDataPartition(y = AR$x, times = 1, p = 0.3, list = FALSE)
+data <- AR[-test_index,]
+temp <- AR[test_index,]
+
+# Make sure activity type and id is also in validation set
+validation <- temp %>% 
+  semi_join(data, by = "id") %>%
+  semi_join(data, by = "activity")
+
+# From now we will work only with data and validation set will be used only at the end
+
+# Clean memory
+rm(AR1, AR2, AR3, AR4, AR5, AR6, AR7, AR8, AR9, AR10, AR11, AR12, AR13, AR14, AR15, temp, test_index, AR)
+```
+
+\newpage
+
+## Data analysis 
+
+### Dataset  
+
+To know with what kind of data are we dealing with we will now display some describing parameters.  
+Let's start with dimensions. Number of rows and column.
+```{r dim, echo = FALSE, message=FALSE, eval = TRUE}
+
+dim(data)
+
+```
+As we can see the data has 7 columns, each for one variable and a lot of rows.  
+It's understandable because it's signal with frequency of 52 Hz. For more details we display first 6 rows.
+
+```{r head, echo = FALSE, message=FALSE, warning = FALSE, eval = TRUE}
+
+as_tibble(data) %>% head(6)
+
+```
+
+The signal is not much understandable if we don't know it's composition.  
+Lets see what kind of values do we have on each axes and other variables with summary() and str() function:
+
+```{r str, echo = TRUE, message=FALSE, warning = FALSE, eval = TRUE}
+# Summary of data
+data %>% summary()
+
+# Structure of data
+data %>% str()
+```
+
+For our analysis we need clear dataset without missing values so we check also this:
+```{r NAs, echo = TRUE, message=FALSE, warning = FALSE, eval = TRUE}
+# Missing values check
+sum(is.na(data)) 
+sum(is.na(validation))
+```
+
+Now we know with what kind of data are we working. So we can go on and explore each activity signal.
+
+\newpage
+
+### Activities  
+
+We know there are 7 activities with labels to differ them. We will start with plotting their length:
+```{r length, echo = FALSE, message=FALSE, warning = FALSE, eval = TRUE}
+# Length of each activity
+data %>% 
+  ggplot(aes(seq, activity)) +
+  geom_density_ridges(alpha = 0.8) +
+  ylab("Activity") +
+  xlab("Time sequence") 
+```
+
+
+As we can see the activities have different duration, however it shouldn't affect our analysis.  
+We will now plot signal per activity in smaller time window so we can see if there is any pattern to recognize.
+```{r act, echo = FALSE, message=FALSE, warning = FALSE, eval = TRUE}
+data %>%
+  filter(seq < 4200) %>%
+  ggplot() +
+  geom_line(aes(seq, x, color = "x")) +
+  geom_line(aes(seq, y, color = "y")) +
+  geom_line(aes(seq, z, color = "z")) +
+  geom_line(aes(seq, vm, color = "vm")) +
+  facet_grid(activity ~ ., scales = "free") +
+  scale_x_continuous(labels = scales::comma) +
+  scale_color_manual("", values = c("x"="blue","y"="red", "z"="yellow", "vm" = "green"), 
+                      label=c("X", "Y", "Z", "VM")) +
+  ylab("") +
+  xlab("Time sequence") +
+  ggtitle("Activities per axes") 
+```
+
+As we can see the difference in patterns is quiet visible. For example in walking we can see the waving of curve because of the steps, the same goes for going up or down, walking + talking and stand + walk down. On the other hand the static activities as working or standing seems to have more straight line signal. Also we can see there is difference in strength of the signal.  
+From this graph we can see that it shouldn't be hard to recognize the activity. For example the signal of working is much more stable but stronger, the standing is also quiet static but the signal is low. On the other hand walking has quiet visible pattern of signal that differs to going up or down or other activities.
+
+\newpage
+
+### Lag plots  
+
+At last we will use lag plots to confirm correlation of signal per activity and also to evaluate whether the values of our data are random. If the data are random, the lag plot will exhibit no identifiable pattern. If the data are not random, the lag plot will demonstrate a clearly identifiable pattern. And as we can see our data display linear pattern with autocorellation that follow the diagonal. 
+We have divided the activities by their pattern of static or dynamic position for better understanding the data.
+```{r lag, echo = FALSE, message=FALSE, warning = FALSE, eval = TRUE}
+### separate activity by pattern
+dynamic <- data %>% filter(activity %in% c( "stand_walk_down",  "walking", "going_up_down", "walk+talk"))
+static <- data %>% filter(activity %in% c("working", "standing", "stand+talk"))
+
+### Creating separate plot for each pattern and axis
+lagx_d <- gglagplot(dynamic$x, lags = 1, do.lines = FALSE, main = "X Dynamic")
+lagy_d <- gglagplot(dynamic$y, lags = 1, do.lines = FALSE, main = "Y Dynamic") 
+lagz_d <- gglagplot(dynamic$z, lags = 1, do.lines = FALSE, main = "Z Dynamic") 
+
+lagx_s <- gglagplot(static$x, lags = 1, do.lines = FALSE, main = "X Static") 
+lagy_s <- gglagplot(static$x, lags = 1, do.lines = FALSE, main = "y Static") 
+lagz_s <- gglagplot(static$x, lags = 1, do.lines = FALSE, main = "Z Static")
+
+lag_list <- list(lagx_d, lagy_d, lagz_d, lagx_s, lagy_s, lagz_s)
+
+######### Signal correlation with lag plot##########
+## May take few minutes to process
+grid.arrange(grobs = lag_list, top = "Lag plot", nrow = 2, ncol = 3)
+
+rm(stand_talk, walk_talk, going_up_down, Walking, standing, stand_walk_down, 
+   working, dynamic, static, lagx_d, lagy_d, lagz_d, lagx_s, lagy_s, lagz_s, 
+   lag_list, lag_plot)
+```
+
+As we know now the data are correlated in both cases and displays pattern of signal. We can now move on and start to build our algorithm.
+
+\newpage
+
+## Algorithm building 
+
+Starting with data partition as our preparation for algorithm building. We divide the data to 60 % of train set and 40 % of test set. We do so, to reduce the amount of time required for computation. However even after this reduction, the computation can take a lot of time (On my computer with processor AMD Ryzen 3600 with 16G RAM took the decision tree 0,5h, kNN 3-4h and Rf 40 minutes.)
+```{r alg_prer, echo = FALSE, message=FALSE, warning = FALSE, eval = TRUE}
+### Partition of data set ##
+set.seed(1, sample.kind="Rounding") # using R 3.6 or later
+test_index <- createDataPartition(y = data$x, times = 1, p = 0.4, list = FALSE)
+train_set <- data[-test_index,]
+temp <- data[test_index,]
+
+# Make sure activity type and source is also in validation set
+test_set <- temp %>% 
+  semi_join(data, by = "id") %>%
+  semi_join(data, by = "activity")
+
+# Clear memory
+rm(temp, test_index)
+```
+
+We will build three algorithms. Starting with decision tree, following k-nearest neighbors (kNN) and last will be random forest (Rf).
+For decision tree and kNN we use Caret package and for Rf we use ranger package because of it's ability to use most of the computational power. However to speed up the process with carate package we will use the doParralel package that allows to separate the computation into multiple cores.
+
+### Decision tree
+
+We start with decision tree because it's fastest application and less demanding of computational power.
+A decision tree is a flowchart-like structure in which each internal node represents a "test" on an attribute (e.g. whether a coin flip comes up heads or tails), each branch represents the outcome of the test, and each leaf node represents a class label (decision taken after computing all attributes). The paths from root to leaf represent classification rules.
+However we wont display the decision tree itself because of necessary "tests" on attributes. It would take a lot of space to display all the branches.
+
+We build our tree with complexity parameter (cp) tuning from 0.01 to 0.1. After tuning the parameter we fit the best one into our model.
+Also we define 10-fold cross validation function that we will use now and later for kNN.
+
+```{r tree, echo = TRUE, message=FALSE, warning = FALSE, eval = TRUE}
+control <- trainControl(method = "cv", number = 10, p = .9)
+
+### Using doParralel package to use more cores in computer (This is set to 10 because of 12 maximum)
+### It's gonna be used even for knn
+cl <- makePSOCKcluster(10)
+registerDoParallel(cl)
+
+train_tree <- caret::train(activity ~ x + y + z + vm, 
+                           method = "rpart",
+                           data = train_set,
+                           tuneGrid = expand.grid(cp = seq(0.01, 0.1, 25)),
+                           trControl = control)
+```
+
+Best performing value of complexity parameter is shown below. We fit it into our model:
+
+```{r fit_tree, echo = TRUE, message=FALSE, warning = FALSE, eval = TRUE}
+train_tree
+
+fit_tree <- caret::train(activity ~ x + y + z + vm, 
+                           method = "rpart",
+                           data = train_set,
+                           tuneGrid = data.frame(cp = train_tree$bestTune),
+                           trControl = control)
+```
+
+The accuracy of regression tree is:
+```{r acc_tree, echo = TRUE, message=FALSE, warning = FALSE, eval = TRUE}
+acc_tree <- confusionMatrix(caret::predict.train(fit_tree, test_set), 
+                            test_set$activity)$overall["Accuracy"]
+
+
+acc_tree
+```
+
+That is quiet good but the performance can be deffinitely better with more complex model.
+
+```{r results_tree, echo = FALSE, message=FALSE, warning = FALSE, eval = TRUE}
+stopCluster(cl)
+
+acc_results <- tibble(method = "Decision tree", 
+                      Accuracy = acc_tree)
+
+
+rm(train_tree, fit_knn, acc_tree)
+```
+
+\newpage
+
+### k-nearest neighbors 
+
+The kNN is a non-parametric method used for classification and regression. The algorithm assumes that similar things exist in close proximity. In other words, similar things are near to each other. It uses ‘feature similarity’ to predict the values of new data points which further means that the new data point will be assigned a value based on how closely it matches the points in the training set. Since the algorithm is based on distance, normalizing data can improve performance. That's why we have done it on the begging. 
+
+We tune the model with K sequence and with cross validation.
+After we find best K value we fit it into our model.
+
+```{r knn, echo = TRUE, message=FALSE, warning = FALSE, eval = TRUE}
+### Using doParralel from previous chunk
+cl <- makePSOCKcluster(10)
+registerDoParallel(cl)
+
+train_knn <- caret::train(activity ~ x + y + z + vm, method = "knn", 
+                   data = train_set,  
+                   tuneGrid = data.frame(k = seq(4,20,1)),
+                   trControl = control)
+
+```
+
+The plot of possible K values is displayed below. And we fit the optimal one into our model.
+
+```{r fit_knn, eval = TRUE, echo=TRUE, message=FALSE, warning=FALSE}
+plot(train_knn, highlight = TRUE)
+
+fit_knn <- caret::train(activity ~ x + y + z + vm, method = "knn", 
+                          data = train_set,  
+                          tuneGrid = data.frame(k = train_knn$bestTune),
+                          trControl = control)
+```
+
+The accuracy of kNN with best tune k parameter is:
+
+```{r acc_knn, echo = TRUE, message=FALSE, warning = FALSE, eval = TRUE}
+acc_knn <- confusionMatrix(caret::predict.train(fit_knn, test_set), 
+                           test_set$activity)$overall["Accuracy"]
+acc_knn
+```
+
+It performs really well, but lets try our last algorithm.
+
+```{r results_knn, echo = FALSE, message=FALSE, warning = FALSE, eval = TRUE}
+stopCluster(cl)
+
+acc_results <- bind_rows(acc_results, 
+                         tibble(method = "k-nearest neighbors algorithm ", 
+                                Accuracy = acc_knn))
+
+rm(train_knn, fit_knn, acc_knn, cl)
+```
+\newpage
+
+### Random forest
+
+Random forest is a classifier that evolves from decision trees. It actually consists of many decision trees. To classify a new instance, each decision tree provides a classification for input data. It collects the classifications and chooses the most voted prediction as the result.
+
+The Ranger package provides auto tuning function so we will use it. Then we fit the best parameters into our model:
+
+```{r rf, echo = TRUE, message=FALSE, warning = FALSE, eval = TRUE}
+## Preparing our data = clearing
+data_rf <- train_set %>% select(-id, -seq) %>% as.data.frame()
+
+## Creating classification task that is needed for tuneRanger
+data.task <- makeClassifTask(data = data_rf, target = "activity")
+
+### Auto tuning withe tuneRanger function
+tune_rf <- tuneRanger(data.task, measure = list(acc), num.trees = 150,
+                        tune.parameters = c("mtry", "min.node.size", "sample.fraction"))
+```
+
+We can see the best values below. So we fit them into the model.
+```{r fit_rf, echo = TRUE, message=FALSE, warning = FALSE, eval = TRUE}
+tune_rf
+
+## Fitting in the best values
+fit_rf <- ranger(activity ~ x + y + z + vm, train_set, 
+                 num.trees = 150,
+                 mtry = 2,
+                 min.node.size = 2,
+                 sample.fraction = 0.6463493)
+```
+
+
+The accuracy of Rf is:
+```{r acc_rf, echo = TRUE, message=FALSE, warning = FALSE, eval = TRUE}
+acc_rf <- confusionMatrix(as.factor(predict(fit_rf, test_set)$predictions),
+                          test_set$activity)$overall["Accuracy"]
+
+acc_rf
+```
+
+```{r results_rf, echo = FALSE, message=FALSE, warning = FALSE, eval = TRUE}
+acc_results <- bind_rows(acc_results, 
+                         tibble(method = "Random Forest", 
+                                Accuracy = acc_rf))
+
+
+rm(data_rf, data.task, tune_rf, acc_rf)
+```
+
+\newpage
+
+# Results  
+
+The results of our algorithms are presented below:
+```{r rmses, echo=FALSE, message=FALSE, eval = TRUE}
+acc_results %>% knitr::kable()
+```
+
+As we can see the Random forest and kNN performance is really good. But the Random Forest perform little bit better.
+So we will predict the validation - unseen set, with our Random forrest model. You can see the resulting confusion matrix on the next page:
+
+\newpage
+
+```{r predict, echo = TRUE, message=FALSE, warning = FALSE, eval = TRUE}
+predict <- predict(fit_rf, validation)
+
+confusionMatrix(as.factor(predict$predictions), validation$activity)
+```
+
+As we can see on the confusion matrix, the model looks really great with accuracy over 98 %.
+We can also visualize it in histogram form:
+
+```{r comp, echo = FALSE, message=FALSE, warning = FALSE, eval = TRUE}
+## Change of the class to data frame
+predictdf <- as.data.frame(predict$predictions) 
+
+# Histograms
+predict_hist <- predictdf %>% ggplot() + geom_bar(aes(x = predict$predictions), fill = "blue") + xlab("") + ylab('Predicted activity')
+real_hist <- validation %>% ggplot() + geom_bar(aes(x = activity), fill = "red") + xlab("") + ylab("Real activity")
+
+# Plot them together
+grid.arrange(grobs = list(predict_hist, real_hist), top = "Activity comparison")
+```
+
+However the 2% difference is really small so it's hard to see. But we can find out the balanced accuracy in confusion matrix above.
+
+
+\newpage
+
+# Conclusion  
+
+As we can see in the results the random forest performs great on our data with accuracy over 98 %.
+The hardest predicted activities are standing up, walking and going up or down stairs; standing; going up or down stairs. The first and last case is quiet understandable to have bad performance because of the changing movement pattern. However the standing activity should be predicted well, but in this case it could be misleading because we don't know if the standing pattern was like standing still or standing while moving the chest in different dimensions.
+
+The model could be improved by setting the kNN and Rf together, however the ranger package creates its own class and I didn't found out how connect it. Expect this approach, other machine learning methods could be used for example deep learning or neural network.
+
+The limitations of our work could be the device and sampling frequency that was used for recording. When we would fit our model to other devices it could work differently.
+
+
+# References  
+
+Casale, P. Pujol, O. and Radeva, P.
+'Personalization and user verification in wearable systems using biometric walking patterns'
+Personal and Ubiquitous Computing, 16(5), 563-580, 2012
+
+https://www.sciencedirect.com/topics/engineering/random-forest
+
+https://nwfsc-timeseries.github.io/atsa-labs/sec-tslab-correlation-within-and-among-time-series.html
